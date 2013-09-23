@@ -68,7 +68,11 @@ class MemoryString:
         return cmp(self.bytes, other.bytes)
 
 def prepareBsub(cpu, mem):
-	mem = '' if mem is None else '-R "select[type==X86_64 && mem > ' + str(int(mem/ 1000000)) + '] rusage[mem=' + str(int(mem/ 1000000)) + ']" -M' + str(int(mem/ 1000000)) + '000'
+	minusM_divisor = 1000000
+	if LSFBatchSystem.lsf_version <= 7:
+		minusM_divisor = 1000000000
+		
+	mem = '' if mem is None else '-R "select[type==X86_64 && mem > ' + str(int(mem/ 1000000)) + '] rusage[mem=' + str(int(mem/ 1000000)) + ']" -M' + str(int(mem/ minusM_divisor))
 	cpu = '' if cpu is None else '-n ' + str(int(cpu))
 	bsubline = ["bsub", mem, cpu,"-cwd", ".", "-o", "/dev/null", "-e", "/dev/null"]
 	return bsubline
@@ -182,6 +186,8 @@ class LSFBatchSystem(AbstractBatchSystem):
     def __des__(self):
         #Closes the file handle associated with the results file.
         self.lsfResultsFileHandle.close() #Close the results file, cos were done.        
+    
+    lsf_version = 0
     
     def issueJob(self, command, memory, cpu):
         jobID = self.nextJobID
@@ -303,6 +309,17 @@ class LSFBatchSystem(AbstractBatchSystem):
         if self.maxCPU is 0 or self.maxMEM is 0:
                 RuntimeError("lshosts returns null ncpus or maxmem info")
         logger.info("Got the maxCPU: %s" % (self.maxMEM))
+        
+        #get the version of lsf - needed for bsub -M parameter (Kb or Mb)
+        p1 = subprocess.Popen(["lshosts -V"], shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
+        line = p1.stdout.readline()
+        items = line.strip().split()
+        if re.search(r'\d+', items[2]):
+            LSFBatchSystem.lsf_version = (items[2].split('.'))[0]
+            logger.info("Got the LSF major version: %s" % (LSFBatchSystem.lsf_version))
+        else:
+            LSFBatchSystem.lsf_version = (items[3].split('.'))[0]
+            logger.info("Got the LSF major version: %s" % (LSFBatchSystem.lsf_version))
 
 def main():
     pass

@@ -68,21 +68,24 @@ class MemoryString:
         return cmp(self.bytes, other.bytes)
 
 def prepareBsub(cpu, mem):
-	minusM_divisor = 1000000
-	if LSFBatchSystem.lsf_version <= 7:
-		minusM_divisor = 1000000000
-		
-	mem = '' if mem is None else '-R "select[type==X86_64 && mem > ' + str(int(mem/ 1000000)) + '] rusage[mem=' + str(int(mem/ 1000000)) + ']" -M' + str(int(mem/ minusM_divisor))
-	cpu = '' if cpu is None else '-n ' + str(int(cpu))
-	bsubline = ["bsub", mem, cpu,"-cwd", ".", "-o", "/dev/null", "-e", "/dev/null"]
-	return bsubline
+    mbytes=int(mem/1000000)
+    kbytes=mbytes*1000
+    mparam=kbytes
+    if LSFBatchSystem.lsf_version > 7:
+        mparam=mbytes
+
+    mem = '' if mem is None else '-R "select[type==X86_64 && mem > ' + str(int(mem/ 1000000)) + '] rusage[mem=' + str(int(mem/ 1000000)) + ']" -M' + str(mparam)
+    cpu = '' if cpu is None else '-n ' + str(int(cpu))
+    bsubline = ["bsub", mem, cpu,"-cwd", ".", "-o", "/dev/null", "-e", "/dev/null"]
+    return bsubline
 
 def bsub(bsubline):
     process = subprocess.Popen(" ".join(bsubline), shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
-    liney = process.stdout.readline()
-    logger.info("BSUB: " + liney)
-    result = int(liney.strip().split()[1].strip('<>'))
-    logger.debug("Got the job id: %s" % (str(result)))
+    line = process.stdout.readline()
+    while line.find("Cannot connect to LSF") > -1:
+        line = process.stdout.readline()
+    result = int(line.strip().split()[1].strip('<>'))
+    logger.info("New job id: "+str(result))
     return result
 
 def getjobexitcode(lsfJobID):
@@ -92,6 +95,10 @@ def getjobexitcode(lsfJobID):
         args = ["bjobs", "-l", str(job)]
         logger.info("Checking job exit code for job via bjobs: " + str(job))
         process = subprocess.Popen(" ".join(args), shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
+        line = process.stdout.readline()
+        while line.find("Cannot connect to LSF") > -1:
+            line = process.stdout.readline()
+        
         started = 0
         for line in process.stdout:
             if line.find("Done successfully") > -1:
@@ -280,6 +287,9 @@ class LSFBatchSystem(AbstractBatchSystem):
         p = subprocess.Popen(["lshosts"], stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
 
         line = p.stdout.readline()
+        while line.find("Cannot connect to LSF") > -1:
+            line = p.stdout.readline()
+        
         items = line.strip().split()
         num_columns = len(items)
         cpu_index = None
@@ -313,13 +323,16 @@ class LSFBatchSystem(AbstractBatchSystem):
         #get the version of lsf - needed for bsub -M parameter (Kb or Mb)
         p1 = subprocess.Popen(["lshosts -V"], shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
         line = p1.stdout.readline()
+        while line.find("Cannot connect to LSF") > -1:
+            line = p1.stdout.readline()
+
         items = line.strip().split()
         if re.search(r'\d+', items[2]):
-            LSFBatchSystem.lsf_version = (items[2].split('.'))[0]
-            logger.info("Got the LSF major version: %s" % (LSFBatchSystem.lsf_version))
+            LSFBatchSystem.lsf_version = int((items[2].split('.'))[0])
+            logger.info("Got the LSF major version: "+str(LSFBatchSystem.lsf_version))
         else:
-            LSFBatchSystem.lsf_version = (items[3].split('.'))[0]
-            logger.info("Got the LSF major version: %s" % (LSFBatchSystem.lsf_version))
+            LSFBatchSystem.lsf_version = int((items[3].split('.'))[0])
+            logger.info("Got the LSF major version: "+str(LSFBatchSystem.lsf_version))
 
 def main():
     pass

@@ -126,6 +126,11 @@ def getjobexitcode(lsfJobID):
         args = ["bacct", "-l", str(job)]
         logger.info("Checking job exit code for job via bacct:" + str(job))
         process = subprocess.Popen(" ".join(args), shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
+        
+        line = process.stdout.readline()
+        while line.find("Cannot connect to LSF") > -1:
+            line = process.stdout.readline()
+            
         for line in process.stdout:
             if line.find("Completed <done>") > -1:
                 logger.info("Detected job completed for job: " + str(job))
